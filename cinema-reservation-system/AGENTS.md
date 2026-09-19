@@ -46,25 +46,17 @@ java Server sync 3
 - Keep logs readable enough for the final report and demo.
 - Do not remove the race-condition demonstration just because it is a bug in real systems; it is required for the assignment.
 
-## Known Issues to Fix
+## Fixes Already Implemented
 
-1. `LIST` response protocol is broken.
-   - The server sends multiple lines.
-   - The client reads only one line per command.
-   - Fix by adding an end-of-response marker or by sending single-line responses.
+1. `LIST` uses an `END_RESPONSE` marker, and the client reads through that marker.
 
-2. Seat ownership is stored as display text.
-   - Avoid using `contains(clientId)` for ownership checks.
-   - Store status and owner separately.
+2. Seat ownership is stored in a structured `Seat` object and compared exactly.
 
-3. Invalid command parsing can disconnect clients.
-   - Missing or non-numeric resource IDs should return a clear error response.
+3. Missing, non-numeric, and out-of-range seat IDs return clear errors without disconnecting the client.
 
-4. Logs need sequence numbers or timestamps.
-   - The assignment asks for approximate time or sequence number.
+4. Logs include both a sequence number and a timestamp.
 
-5. README is missing.
-   - Add Docker build/run instructions and experiment steps.
+5. `README.md`, `DEMO.md`, and `RaceTest.java` document and automate the required experiments.
 
 ## Recommended Implementation Notes
 
