@@ -1,0 +1,123 @@
+# AGENTS
+
+## Project Context
+
+This is a Java implementation of an OS class project: Concurrent Reservation System using a producer-consumer message queue pattern.
+
+The selected scenario is movie theater seat reservation. The system has 20 seats, multiple clients, one server, a bounded request queue, and multiple worker threads. The project must demonstrate race condition behavior and then fix it using a semaphore or mutex.
+
+Important: the original assignment document says C/C++ and System V/POSIX Message Queue. The student confirmed with the instructor that Java is allowed. Do not convert the project to C/C++ unless explicitly asked.
+
+## Main Design
+
+- `Client` connects to the server over a socket.
+- `ClientHandler` receives client commands and acts as a producer.
+- `RequestMessage` represents one queue message.
+- `BlockingQueue<RequestMessage>` is the bounded request queue.
+- Worker threads act as consumers.
+- Workers process `LIST`, `STATUS`, `RESERVE`, and `CANCEL`.
+- The reservation table is shared data.
+- A binary semaphore protects the critical section in synchronized mode.
+
+## Required Modes
+
+Keep these modes working:
+
+- Sequential baseline: 1 worker.
+- Concurrent no-sync: at least 3 workers, semaphore disabled.
+- Concurrent sync: at least 3 workers, semaphore enabled.
+
+Suggested command style:
+
+```bash
+java Server sync 1
+java Server nosync 3
+java Server sync 3
+```
+
+## Critical Rules for Changes
+
+- Preserve the producer-consumer queue architecture.
+- Preserve random delay between check and update for `RESERVE`.
+- Preserve a mode where synchronization is intentionally disabled.
+- Preserve a mode where synchronization is enabled.
+- Keep at least 20 seats.
+- Keep support for at least 5 simultaneous clients.
+- Keep logs readable enough for the final report and demo.
+- Do not remove the race-condition demonstration just because it is a bug in real systems; it is required for the assignment.
+
+## Known Issues to Fix
+
+1. `LIST` response protocol is broken.
+   - The server sends multiple lines.
+   - The client reads only one line per command.
+   - Fix by adding an end-of-response marker or by sending single-line responses.
+
+2. Seat ownership is stored as display text.
+   - Avoid using `contains(clientId)` for ownership checks.
+   - Store status and owner separately.
+
+3. Invalid command parsing can disconnect clients.
+   - Missing or non-numeric resource IDs should return a clear error response.
+
+4. Logs need sequence numbers or timestamps.
+   - The assignment asks for approximate time or sequence number.
+
+5. README is missing.
+   - Add Docker build/run instructions and experiment steps.
+
+## Recommended Implementation Notes
+
+Use a small `Seat` class instead of raw strings:
+
+```java
+static class Seat {
+    boolean reserved;
+    String owner;
+}
+```
+
+Use helper methods for responses:
+
+```java
+sendLine(out, "...");
+sendEnd(out);
+```
+
+For multi-line responses, the client should read until an agreed marker:
+
+```text
+END_RESPONSE
+```
+
+For logs, use a shared sequence number:
+
+```java
+private static final AtomicLong logSeq = new AtomicLong(0);
+```
+
+## Demo Evidence to Preserve
+
+The final project should make it easy to collect:
+
+- Server startup mode and worker count.
+- Client IDs and commands.
+- Queue enqueue/dequeue logs.
+- Worker check phase.
+- Random delay behavior.
+- Critical-section enter/leave logs.
+- Final seat owner after each experiment.
+
+## Documentation Expectations
+
+When writing README or report text, clearly explain:
+
+- Why the reservation table is shared data.
+- Where the critical section is.
+- Why the message queue alone does not prevent race condition.
+- What random delay does.
+- How semaphore/mutex fixes the race.
+- Why Experiment 1 has no race condition.
+- Why Experiment 2 can race.
+- Why Experiment 3 allows only one successful reservation.
+
