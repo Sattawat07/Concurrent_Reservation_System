@@ -1,0 +1,46 @@
+# Java build output
+out/
+build/
+target/
+*.class
+*.jar
+
+# Runtime logs and generated test evidence
+*.log
+logs/
+results/
+
+# Keep only the project README as Markdown documentation
+*.md
+!README.md
+
+# IDE settings
+.vscode/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+
+# Local environment files
+.env
+.env.*
+!.env.example

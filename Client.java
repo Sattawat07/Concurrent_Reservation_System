@@ -2,19 +2,6 @@ import java.io.*;
 import java.net.*;
 import java.util.Scanner;
 
-/**
- * Concurrent Reservation System - Movie Theater (Client side).
- *
- * The user only types simple commands (LIST, STATUS <id>, RESERVE <id>,
- * CANCEL <id>, QUIT). This client automatically adds the client id to the wire
- * format, so the server receives "<COMMAND> <clientId> <seatId?>".
- *
- * Every server response is terminated by the marker line "END_RESPONSE".
- * This client keeps reading lines until that marker, which is why the
- * multi-line LIST response can no longer leak into the next command's reply.
- *
- * Usage: java Client [clientId] [serverHost]
- */
 public class Client {
 	private static final int SERVER_PORT = 8080;
 	private static final String END_MARKER = "END_RESPONSE";
@@ -42,7 +29,6 @@ public class Client {
 				if (commandLine.isEmpty())
 					continue;
 
-				// Wire format: "<COMMAND> <clientId> <rest?>".
 				out.println(commandLine.split("\\s+")[0] + " " + clientId + " " +
 						(commandLine.contains(" ") ? commandLine.substring(commandLine.indexOf(" ") + 1) : ""));
 
@@ -62,13 +48,6 @@ public class Client {
 		}
 	}
 
-	/**
-	 * Reads one full server response: all lines up to (but not including) the
-	 * "END_RESPONSE" marker.
-	 *
-	 * @return the response text, or null if the stream was closed before the
-	 *         marker arrived.
-	 */
 	private static String readResponse(BufferedReader in) throws IOException {
 		StringBuilder sb = new StringBuilder();
 		String line;
