@@ -1,0 +1,9 @@
+.git
+out
+target
+*.log
+logs
+results
+.agents
+.aws
+.codex
