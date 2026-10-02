@@ -1,340 +1,370 @@
-# Concurrent Cinema Reservation System
+# Cinema Reservation System ด้วย POSIX Message Queue
 
-ระบบจองที่นั่งโรงภาพยนตร์แบบ Client-Server ด้วยภาษา Java สำหรับสาธิต Producer-Consumer Message Queue, การทำงานพร้อมกันของ Worker threads, Shared Resource, Race Condition และการควบคุม Critical Section ด้วย `Semaphore(1)`
+คู่มือนี้อธิบายการ build และรันโปรเจกต์ผ่าน Docker ตั้งแต่เริ่มต้น รวมถึงวิธีอ่านผลลัพธ์จาก Server และ `RaceTest` ระบบนี้ไม่ใช้ IP หรือ port เพราะ Server และ Client สื่อสารกันผ่าน Linux POSIX Message Queue ภายใน container เดียวกัน
 
-โปรเจกต์นี้ช้ TCP Socket สำหรับการสื่อสารระหว่าง Client กับ Server และใช้ `ArrayBlockingQueue<RequestMessage>` เป็น Message Queue ภายใน Server
+## 1. สิ่งที่ต้องมี
 
-## คุณสมบัติของระบบ
+- Docker Desktop หรือ Docker Engine ที่กำลังทำงาน
+- เปิด terminal ที่โฟลเดอร์โปรเจกต์ซึ่งมี `Dockerfile`
 
-- ที่นั่งจำนวน 20 ที่นั่ง หมายเลข 1-20
-- Request Queue ความจุ 50 รายการ
-- รองรับ Client หลายตัวพร้อมกันผ่าน TCP port `8080`
-- กำหนดจำนวน Worker ได้ตอนเปิด Server
-- มีโหมด `sync` และ `nosync` สำหรับเปรียบเทียบผลของ Synchronization
-- ใช้ random delay 50-500 ms ระหว่าง CHECK และ UPDATE ของคำสั่ง `RESERVE`
-- มี `RaceTest` สำหรับส่งคำขอจองที่นั่งเดียวกันจาก Client จำลองหลายตัวพร้อมกัน
-- รองรับการ Build และ Run ด้วย Java โดยตรงหรือ Docker
-
-## โครงสร้างการทำงาน
-
-```text
-Client
-  |
-  | TCP Socket : 8080
-  v
-ClientHandler (Producer)
-  |
-  | RequestMessage
-  v
-ArrayBlockingQueue (capacity 50)
-  |
-  v
-WorkerTask (Consumer)
-  |
-  | Semaphore(1) in sync mode
-  v
-Shared Seat[]
-```
-
-`ClientHandler` อ่านคำสั่งจาก Socket สร้าง `RequestMessage` และเพิ่มลงใน Request Queue ส่วน `WorkerTask` ดึงคำขอออกจากคิวและประมวลผลกับข้อมูล `Seat[]` ที่ใช้ร่วมกัน
-
-Message Queue ทำให้การเพิ่มและนำงานออกจากคิวปลอดภัย แต่ไม่ได้ทำให้ขั้นตอน CHECK และ UPDATE ของที่นั่งเป็น Atomic ดังนั้นโหมด `sync` จึงใช้ `Semaphore(1)` ป้องกัน Race Condition แยกต่างหาก
-
-## ไฟล์ในโปรเจกต์
-
-```text
-.
-├── Server.java      # Server, Request Queue, Worker และ Shared Seat Table
-├── Client.java      # Interactive Client
-├── RaceTest.java    # โปรแกรมจำลอง Client หลายตัวพร้อมกัน
-├── Dockerfile       # สภาพแวดล้อม Java 17 สำหรับ Docker
-├── README.md        # วิธี Build, Run และทดสอบระบบ
-```
-
-## สิ่งที่ต้องมี
-
-### การรันด้วย Java โดยตรง
-
-- JDK 17 หรือใหม่กว่า
-
-ตรวจสอบ Java:
-
-```bash
-java -version
-javac -version
-```
-
-### การรันด้วย Docker
-
-- Docker Desktop หรือ Docker Engine
-- Linux containers
-
-ตรวจสอบ Docker:
+ตรวจสอบว่า Docker พร้อมใช้งาน:
 
 ```bash
 docker version
 ```
 
-## Build ด้วย Java
+## 2. Build Image
 
-เปิด Terminal ที่โฟลเดอร์โปรเจกต์แล้วรัน:
-
-```bash
-javac -d out Server.java Client.java RaceTest.java
-```
-
-ไฟล์ `.class` จะถูกสร้างในโฟลเดอร์ `out/`
-
-## การเปิด Server
-
-รูปแบบคำสั่ง:
+รันคำสั่งนี้ในโฟลเดอร์โปรเจกต์ คำสั่งเดียวนี้ทั้งสร้าง Docker image และให้ Maven คอมไพล์ Java ภายใน image จึงไม่ต้องรัน `javac` แยก:
 
 ```bash
-java -cp out Server [sync|nosync] [workerCount]
+docker build -t cinema-mq .
 ```
 
-เปิด Server แบบมี Synchronization และใช้ 3 Workers:
+เมื่อแก้ไฟล์ `.java`, `pom.xml` หรือ `Dockerfile` ต้อง build image ใหม่ **และสร้าง container ใหม่** เพื่อให้ใช้โค้ดรุ่นล่าสุด การเปลี่ยน `sync`, `nosync` หรือจำนวน Worker ใช้แค่เริ่ม Server ใหม่ ไม่ต้อง build image ใหม่
+
+ไฟล์ที่เกิดจากการคอมไพล์ เช่น `out/`, `target/` และ `*.class` ถูก `.gitignore` ไว้ ไม่ควร push ขึ้น Git
+
+ตรวจสอบ image ที่สร้างแล้ว:
 
 ```bash
-java -cp out Server sync 3
+docker image ls cinema-mq
 ```
 
-เปิด Server แบบไม่มี Synchronization และใช้ 3 Workers:
+## 3. สร้าง Container
+
+สร้าง container สำหรับใช้รัน Server, Client และ RaceTest:
 
 ```bash
-java -cp out Server nosync 3
+docker run -d --name cinema-mq cinema-mq
 ```
 
-เปิด Server แบบมี Worker เพียง 1 ตัว:
+ตรวจสอบสถานะ:
 
 ```bash
-java -cp out Server sync 1
+docker ps --filter name=cinema-mq
 ```
 
-โหมดและจำนวน Worker ถูกอ่านตอนเริ่ม Server หากต้องการเปลี่ยนค่าให้หยุด Server ด้วย `Ctrl+C` แล้วเปิดใหม่
-
-## การเปิด Interactive Client
-
-เปิด Terminal ใหม่โดยปล่อย Terminal ของ Server ทำงานค้างไว้:
+ถ้าเคยสร้าง container นี้แล้วและมันหยุดอยู่ ให้เปิดใหม่ด้วย:
 
 ```bash
-java -cp out Client Client-1 localhost
+docker start cinema-mq
 ```
 
-เปิด Client เพิ่มได้โดยเปลี่ยน Client ID:
+ถ้า build image ใหม่ ต้องลบ container เดิมและสร้างใหม่เพื่อให้ container ใช้ source code รุ่นล่าสุด:
 
 ```bash
-java -cp out Client Client-2 localhost
-java -cp out Client Client-3 localhost
-java -cp out Client Client-4 localhost
-java -cp out Client Client-5 localhost
+docker rm -f cinema-mq
+docker run -d --name cinema-mq cinema-mq
 ```
 
-หาก Client อยู่คนละเครื่อง ให้แทน `localhost` ด้วย IPv4 address ของเครื่องที่รัน Server:
+## 4. รูปแบบการเปิด Server
 
-```bash
-java -cp out Client Client-1 192.168.1.174
-```
-
-ทั้งสองเครื่องต้องเชื่อมต่อถึงกัน และ Firewall ของเครื่อง Server ต้องอนุญาต TCP port `8080`
-
-## คำสั่งที่ Client รองรับ
+คำสั่ง Server มีรูปแบบดังนี้:
 
 ```text
-LIST
-STATUS <seat_id>
-RESERVE <seat_id>
-CANCEL <seat_id>
-QUIT
+Server <mode> <workerCount>
 ```
+
+| รูปแบบ | ความหมาย | ใช้เมื่อ |
+| --- | --- | --- |
+| `sync 1` | มี Worker 1 ตัวและใช้ Semaphore | ทดลองกรณีทำงานทีละคำขอ |
+| `nosync 3` | มี Worker 3 ตัวและไม่ใช้ Semaphore | สาธิต Race Condition |
+| `sync 3` | มี Worker 3 ตัวและใช้ Semaphore | สาธิตการแก้ Race Condition |
+
+เปิด Server ใน Terminal 1 และปล่อย terminal นี้ไว้:
+
+```bash
+docker exec -it cinema-mq java -cp 'target/classes:target/dependency/*' Server sync 3
+```
+
+เมื่อเห็นบรรทัดที่มี `mode=sync workers=3` แสดงว่า Server พร้อมรับคำขอแล้ว
+
+กด `Ctrl+C` เมื่อต้องการหยุด Server การกดคำสั่งนี้หยุดเฉพาะโปรเซส Server แต่ container ยังทำงานอยู่ จึงสามารถเริ่ม Server โหมดใหม่ได้โดยไม่ต้อง build หรือสร้าง container ใหม่
+
+เปิด Server ได้ครั้งละหนึ่งตัวเท่านั้น
+
+## 5. วิธีรันแบบที่ 1: ใช้งานผ่าน Client
+
+ต้องเปิด Server ใน Terminal 1 ก่อน จากนั้นเปิด Terminal 2 แล้วรัน:
+
+```bash
+docker exec -it cinema-mq java -cp 'target/classes:target/dependency/*' Client Client-1
+```
+
+เปิด Client เพิ่มใน terminal อื่นได้ โดยเปลี่ยนชื่อไม่ให้ซ้ำ:
+
+```bash
+docker exec -it cinema-mq java -cp 'target/classes:target/dependency/*' Client Client-2
+```
+
+```bash
+docker exec -it cinema-mq java -cp 'target/classes:target/dependency/*' Client Client-3
+```
+
+Terminal 5 และ 6 เปิด Client อีกสองตัว:
+
+```bash
+docker exec -it cinema-mq java -cp 'target/classes:target/dependency/*' Client Client-4
+```
+
+```bash
+docker exec -it cinema-mq java -cp 'target/classes:target/dependency/*' Client Client-5
+```
+
+คำสั่งที่พิมพ์ใน Client:
+
+| คำสั่ง | ผลลัพธ์ |
+| --- | --- |
+| `LIST` | แสดงสถานะที่นั่งทั้งหมด 20 ที่ |
+| `STATUS 10` | ตรวจสอบที่นั่งหมายเลข 10 |
+| `RESERVE 10` | จองที่นั่งหมายเลข 10 |
+| `CANCEL 10` | ยกเลิกที่นั่ง ต้องใช้ Client ID ของผู้จอง |
+| `QUIT` | ปิด Client ตัวนั้น แต่ Server ยังทำงานต่อ |
+
+ตัวอย่างผลฝั่ง Client:
+
+```text
+Client-1> RESERVE 10
+Server Response:
+SUCCESS: Seat 10 reserved successfully.
+```
+
+ถ้า Client อื่นจองที่นั่งเดิม จะได้:
+
+```text
+FAILED: Seat 10 is already reserved.
+```
+
+## 6. วิธีรันแบบที่ 2: ทดลองพร้อมกันด้วย RaceTest
+
+`RaceTest` สร้าง Client ตามจำนวนที่กำหนดและปล่อยให้ส่งคำสั่ง `RESERVE` พร้อมกัน รูปแบบคำสั่งคือ:
+
+```text
+RaceTest <seatId> <clientCount> <attempts>
+```
+
+ตัวอย่างนี้ให้ Client 5 ตัวแข่งกันจอง เริ่มจากที่นั่ง 10 และทดลองสูงสุด 3 รอบ:
+
+```bash
+docker exec cinema-mq java -cp 'target/classes:target/dependency/*' RaceTest 10 5 3
+```
+
+แต่ละรอบใช้ที่นั่งใหม่ เช่น ที่นั่ง 10, 11 และ 12 เพื่อไม่ให้ผลจากรอบก่อนรบกวนรอบถัดไป ชื่อ `RaceClient-2-Run1` หมายถึง Client ตัวที่ 2 ในรอบทดลองที่ 1
+
+### การทดลองที่ 1: Worker เดียว
+
+Terminal 1:
+
+```bash
+docker exec -it cinema-mq java -cp 'target/classes:target/dependency/*' Server sync 1
+```
+
+Terminal 2:
+
+```bash
+docker exec cinema-mq java -cp 'target/classes:target/dependency/*' RaceTest 10 5 1
+```
+
+ผลที่ควรได้: `successes=1` และ `failures=4` เพราะ Worker ประมวลผลทีละคำขอ
+
+### การทดลองที่ 2: สาม Worker ไม่มี Semaphore
+
+หยุด Server เดิมด้วย `Ctrl+C` แล้วเปิด Server ใหม่ใน Terminal 1:
+
+```bash
+docker exec -it cinema-mq java -cp 'target/classes:target/dependency/*' Server nosync 3
+```
+
+Terminal 2:
+
+```bash
+docker exec cinema-mq java -cp 'target/classes:target/dependency/*' RaceTest 10 5 5
+```
+
+ผลที่ต้องสังเกต: อย่างน้อยหนึ่งรอบอาจมี `successes` มากกว่า 1 เพราะ Worker หลายตัวตรวจพบว่าที่นั่งยังว่างพร้อมกัน ผลอาจต่างกันในแต่ละครั้งเนื่องจากลำดับการทำงานของ Thread ถูกกำหนดโดยระบบปฏิบัติการ
+
+### การทดลองที่ 3: สาม Worker ใช้ Semaphore
+
+หยุด Server เดิมด้วย `Ctrl+C` แล้วเปิด Server ใหม่ใน Terminal 1:
+
+```bash
+docker exec -it cinema-mq java -cp 'target/classes:target/dependency/*' Server sync 3
+```
+
+Terminal 2:
+
+```bash
+docker exec cinema-mq java -cp 'target/classes:target/dependency/*' RaceTest 10 5 3
+```
+
+ผลที่ควรได้: ทุกรอบมี `successes=1` เพราะ Semaphore อนุญาตให้ Worker เข้า Critical Section ได้ครั้งละหนึ่งตัว
+
+## 7. วิธีอ่านผลจาก RaceTest
 
 ตัวอย่าง:
 
 ```text
-LIST
-STATUS 10
-RESERVE 10
-CANCEL 10
-QUIT
+Releasing 5 clients to reserve seat 10...
+RaceClient-2-Run1: SUCCESS: Seat 10 reserved successfully.
+RaceClient-4-Run1: FAILED: Seat 10 is already reserved.
+Attempt 1 seat 10: successes=1 failures=4 transportErrors=0
 ```
 
-หมายเลขที่นั่งต้องอยู่ระหว่าง 1-20 และ Client สามารถยกเลิกได้เฉพาะที่นั่งที่จองด้วย Client ID ของตนเอง
+| ข้อความ | ความหมาย |
+| --- | --- |
+| `Releasing 5 clients` | Client ทั้ง 5 ตัวเริ่มส่งคำขอพร้อมกันแล้ว |
+| `SUCCESS` | Client ตัวนั้นได้รับผลว่าจองสำเร็จ |
+| `FAILED` | คำขอไปถึง Server แต่จองไม่สำเร็จ เช่น ที่นั่งถูกจองแล้ว |
+| `successes` | จำนวน Client ที่ Server ตอบว่าจองสำเร็จ |
+| `failures` | จำนวน Client ที่ได้รับคำตอบปฏิเสธจาก Server |
+| `transportErrors` | จำนวนข้อผิดพลาดในการรับส่งผ่าน Message Queue ค่านี้ควรเป็น 0 |
 
-## การใช้ RaceTest
+ใน `sync` ค่าที่ถูกต้องสำหรับการจองที่นั่งเดียวกันคือ `successes=1` ส่วน `nosync` ที่มี `successes>1` คือหลักฐานของ Race Condition
 
-รูปแบบคำสั่ง:
+## 8. วิธีอ่าน Server Log
 
-```bash
-java -cp out RaceTest [serverHost] [seatId] [clientCount]
-```
-
-ให้ Client จำลอง 5 ตัวส่งคำขอจองที่นั่งหมายเลข 10 พร้อมกัน:
-
-```bash
-java -cp out RaceTest localhost 10 5
-```
-
-`RaceTest` ใช้ `CountDownLatch` เตรียม Client ทุกตัวให้พร้อมก่อนปล่อยคำขอพร้อมกัน แต่ละ Client ใช้ Socket ของตนเองและส่งคำสั่ง `RESERVE` สำหรับที่นั่งเดียวกัน
-
-## การทดลองทั้ง 3 กรณี
-
-ต้องหยุดและเปิด Server ใหม่ก่อนทุกกรณี เพื่อคืนสถานะที่นั่งทั้งหมดเป็น AVAILABLE
-
-### Experiment 1: Sequential Baseline
-
-Terminal 1:
-
-```bash
-java -cp out Server sync 1
-```
-
-Terminal 2:
-
-```bash
-java -cp out RaceTest localhost 10 5
-```
-
-ผลที่คาดหวัง: มี `SUCCESS` 1 ราย และ `FAILED` 4 ราย เนื่องจาก Worker เพียงตัวเดียวประมวลผลคำขอทีละรายการ
-
-### Experiment 2: Concurrent without Synchronization
-
-Terminal 1:
-
-```bash
-java -cp out Server nosync 3
-```
-
-Terminal 2:
-
-```bash
-java -cp out RaceTest localhost 10 5
-```
-
-ผลที่สังเกต: อาจมี Client มากกว่าหนึ่งรายได้รับ `SUCCESS` สำหรับที่นั่งเดียวกัน เพราะ Worker หลายตัวสามารถตรวจพบ AVAILABLE ก่อนเกิด UPDATE หากรอบแรกไม่แสดง Race Condition ให้หยุด Server แล้วทดลองใหม่
-
-### Experiment 3: Concurrent with Synchronization
-
-Terminal 1:
-
-```bash
-java -cp out Server sync 3
-```
-
-Terminal 2:
-
-```bash
-java -cp out RaceTest localhost 10 5
-```
-
-ผลที่คาดหวัง: มี `SUCCESS` เพียง 1 ราย และ `FAILED` 4 ราย โดย Server log จะแสดงการ `ENTER` และ `LEAVE` Critical Section
-
-## Build และ Run ด้วย Docker
-
-### ต้อง Build Image เมื่อใด
-
-ตรวจสอบก่อนว่าเครื่องมี Image อยู่แล้วหรือไม่:
-
-```bash
-docker image ls
-```
-
-ต้องรัน `docker build` ในกรณีต่อไปนี้:
-
-- ยังไม่มี Image ชื่อ `theater-system`
-- มีการแก้ไข `Server.java`, `Client.java` หรือ `RaceTest.java`
-- มีการแก้ไข `Dockerfile`
-- Image เดิมถูกลบ หรือกำลังใช้งานบนเครื่องใหม่
-- ต้องการให้ Container ใช้โค้ดเวอร์ชันล่าสุด
-
-สร้าง Image จากโฟลเดอร์ที่มี `Dockerfile` และไฟล์ Java:
-
-```bash
-docker build -t theater-system .
-```
-
-หาก Build ครั้งล่าสุดล้มเหลว แต่ `docker image ls` ยังแสดง `theater-system:latest` แสดงว่า Image เก่ายังคงอยู่ การรัน Container ในตอนนั้นจะใช้โค้ดเวอร์ชันเก่า
-
-### กรณีที่ไม่ต้อง Build ใหม่
-
-ไม่ต้อง Build Image ใหม่เมื่อโค้ดและ `Dockerfile` ไม่มีการเปลี่ยนแปลง รวมถึงกรณีต่อไปนี้:
-
-- เปลี่ยนโหมดระหว่าง `sync` และ `nosync`
-- เปลี่ยนจำนวน Worker
-- เริ่มการทดลองรอบใหม่เพื่อรีเซ็ตข้อมูลที่นั่ง
-- เปิด Interactive Client เพิ่ม
-- รัน `RaceTest` เพิ่มหรือเปลี่ยนหมายเลขที่นั่งและจำนวน Client
-
-โหมด จำนวน Worker หมายเลขที่นั่ง และจำนวน Client เป็น argument ตอนรันโปรแกรม จึงไม่ถูกเก็บเป็นค่าตายตัวใน Image
-
-### เปิด Server Container
-
-เปิด Server แบบ `sync` และใช้ 3 Workers:
-
-```bash
-docker run --rm --name theater-server -p 8080:8080 \
-  theater-system java Server sync 3
-```
-
-การเปลี่ยนเป็นโหมด `nosync` ไม่ต้อง Build ใหม่ ให้หยุด Container เดิมด้วย `Ctrl+C` แล้วเปิดใหม่:
-
-```bash
-docker run --rm --name theater-server -p 8080:8080 \
-  theater-system java Server nosync 3
-```
-
-การเปลี่ยนจำนวน Worker ใช้วิธีเดียวกัน เช่น Sequential Baseline ที่มี Worker 1 ตัว:
-
-```bash
-docker run --rm --name theater-server -p 8080:8080 \
-  theater-system java Server sync 1
-```
-
-Server เก็บข้อมูลที่นั่งไว้ในหน่วยความจำ การหยุดและเปิด Container ใหม่จึงทำให้ที่นั่งทั้งหมดกลับเป็น AVAILABLE โดยไม่ต้อง Build Image ใหม่
-
-### เปิด Client และ RaceTest
-
-เปิด Client ภายใน Container จาก Terminal ใหม่:
-
-```bash
-docker exec -it theater-server java Client Client-1 localhost
-```
-
-เปิด RaceTest ภายใน Container:
-
-```bash
-docker exec -it theater-server java RaceTest localhost 10 5
-```
-
-อีกทางเลือกหนึ่งคือรัน Client หรือ RaceTest จากเครื่อง Host หลังจาก Compile ด้วย `javac -d out ...` แล้ว โดยเชื่อมต่อมาที่ `localhost:8080`
-
-สรุปลำดับการใช้ Docker คือ Build Image เมื่อโค้ดเปลี่ยน จากนั้นสามารถ Run, Stop และ Run Container ใหม่ได้หลายครั้งโดยใช้ Image เดิม
-
-## การอ่าน Server Log
-
-Server log แสดงข้อมูลสำคัญ เช่น:
-
-- `seq` และเวลา
-- การ `ENQUEUE` และ `DEQUEUE`
-- Worker ที่ประมวลผลคำขอ
-- Client ID, command และ seat ID
-- การ `CHECK` และ `UPDATE` ที่นั่ง
-- การ `ENTER` และ `LEAVE` Critical Section ในโหมด `sync`
-
-ตัวอย่าง:
+Server log ใช้รูปแบบ `[ลำดับ เวลา] W<หมายเลข> EVENT รายละเอียด` โดยลำดับเติมศูนย์อย่างน้อย 3 หลัก และเวลาแม่นยำถึงมิลลิวินาที:
 
 ```text
-[Queue] ENQUEUE RESERVE seat=10 from RaceClient-1
-[Worker-1] DEQUEUE RESERVE seat=10 from RaceClient-1
-[Worker-1] ENTER critical section (RESERVE seat 10)
-[Worker-1] CHECK seat 10: AVAILABLE
-[Worker-1] UPDATE seat 10 reserved by RaceClient-1
-[Worker-1] LEAVE critical section (RESERVE seat 10)
+[012 15:50:52.431] W3 UPDATE RaceClient-2-Run1 RESERVE seat=10 owner=RaceClient-2-Run1
 ```
 
-## การหยุดระบบ
+| ส่วนของ log | ความหมาย |
+| --- | --- |
+| `012` | ลำดับเหตุการณ์ |
+| `15:50:52.431` | เวลาที่เกิดเหตุการณ์ |
+| `W3` | Worker ตัวที่ 3 (`W0` ใช้กับข้อความเริ่ม Server) |
+| `RaceClient-2-Run1 RESERVE seat=10` | Client, คำสั่ง และที่นั่ง |
+| `owner=...` | เจ้าของที่นั่งหลัง `UPDATE` |
 
-- Interactive Client: ใช้คำสั่ง `QUIT`
-- Server หรือ RaceTest: กด `Ctrl+C` เมื่อจำเป็น
-- Docker Server ที่รันอยู่ด้านหน้า: กด `Ctrl+C`
+ความหมายของเหตุการณ์สำคัญ:
 
-ข้อมูลการจองอยู่ในหน่วยความจำและจะถูกรีเซ็ตทุกครั้งที่เริ่ม Server process ใหม่
+| เหตุการณ์ | ความหมาย |
+| --- | --- |
+| `RECV` | Worker รับคำขอจาก request queue |
+| `LOCK` | Worker ได้รับ Semaphore และเข้า Critical Section |
+| `CHECK` | Worker กำลังตรวจว่าที่นั่งว่างหรือถูกจองแล้ว |
+| `UPDATE` | Worker เปลี่ยนสถานะหรือเจ้าของที่นั่ง |
+| `UNLOCK` | Worker ออกจาก Critical Section และคืน Semaphore |
+| `RESULT` | ส่งคำตอบแล้ว โดยระบุ `SUCCESS` หรือ `FAILED` พร้อมสาเหตุสั้น ๆ |
+| `ERROR` | ข้อผิดพลาดของข้อความ คิว หรือการส่งคำตอบ |
+
+`LIST`, `STATUS` และ `QUIT` ใช้เพียง `RECV` กับ `RESULT` เพื่อให้ log กระชับ ชื่อ response queue และ request ID ปรากฏเฉพาะเมื่อส่งคำตอบไม่สำเร็จ
+
+### ตัวอย่าง log ของโหมด sync
+
+```text
+[002 15:50:52.100] W1 RECV RaceClient-1-Run1 RESERVE seat=10
+[003 15:50:52.101] W2 RECV RaceClient-2-Run1 RESERVE seat=10
+[004 15:50:52.102] W1 LOCK RaceClient-1-Run1 RESERVE seat=10
+[005 15:50:52.103] W1 CHECK RaceClient-1-Run1 RESERVE seat=10 AVAILABLE
+[006 15:50:52.300] W1 UPDATE RaceClient-1-Run1 RESERVE seat=10 owner=RaceClient-1-Run1
+[007 15:50:52.301] W1 UNLOCK RaceClient-1-Run1 RESERVE seat=10
+[008 15:50:52.302] W2 LOCK RaceClient-2-Run1 RESERVE seat=10
+[009 15:50:52.303] W2 CHECK RaceClient-2-Run1 RESERVE seat=10 owner=RaceClient-1-Run1
+[010 15:50:52.304] W2 UNLOCK RaceClient-2-Run1 RESERVE seat=10
+[011 15:50:52.305] W2 RESULT RaceClient-2-Run1 RESERVE seat=10 FAILED already reserved
+```
+
+สังเกตว่า `W2` ได้ `LOCK` หลัง `W1` ทำ `UNLOCK` จึงเห็นเจ้าของที่นั่งล่าสุดและไม่จองซ้ำ
+
+### ตัวอย่าง log ของ Race Condition ในโหมด nosync
+
+```text
+[005 15:50:52.101] W1 CHECK RaceClient-1-Run1 RESERVE seat=10 AVAILABLE
+[006 15:50:52.102] W2 CHECK RaceClient-2-Run1 RESERVE seat=10 AVAILABLE
+[007 15:50:52.103] W3 CHECK RaceClient-3-Run1 RESERVE seat=10 AVAILABLE
+[008 15:50:52.250] W1 UPDATE RaceClient-1-Run1 RESERVE seat=10 owner=RaceClient-1-Run1
+[009 15:50:52.300] W2 UPDATE RaceClient-2-Run1 RESERVE seat=10 owner=RaceClient-2-Run1
+[010 15:50:52.350] W3 UPDATE RaceClient-3-Run1 RESERVE seat=10 owner=RaceClient-3-Run1
+```
+
+Worker หลายตัวเห็น `AVAILABLE` ก่อนที่ตัวอื่นจะ UPDATE จึงมีหลาย Client ได้รับ `SUCCESS` นี่คือ Race Condition และเจ้าของที่นั่งสุดท้ายจะขึ้นอยู่กับ Worker ที่ UPDATE เป็นตัวสุดท้าย
+
+ในโหมด `nosync` จะไม่มี `LOCK` และ `UNLOCK` เพราะไม่ได้ใช้ Semaphore
+
+## 9. วิธีรันแบบที่ 3: Automated Tests
+
+หยุด Server แบบ interactive ก่อน แล้วรัน:
+
+```bash
+docker exec cinema-mq mvn -q test
+```
+
+ต้องหยุด Server ก่อน เพราะชุดทดสอบจะสร้าง `/cinema_requests` และเริ่ม Server สำหรับการทดสอบเอง ถ้าคำสั่งจบโดยไม่มี error แสดงว่าชุดทดสอบผ่าน
+
+## 10. ตรวจสอบ Message Queue
+
+ระหว่างที่ Server หรือ Client ทำงาน สามารถดูคิวได้ด้วย:
+
+```bash
+docker exec cinema-mq ls -l /dev/mqueue
+```
+
+เมื่อ Server ทำงานควรเห็น:
+
+```text
+cinema_requests
+```
+
+เมื่อมี Client ทำงาน จะเห็นคิวชื่อประมาณนี้เพิ่มขึ้น:
+
+```text
+cinema_reply_1234_a1b2c3...
+```
+
+หลัง Client ปิดด้วย `QUIT` response queue ของ Client นั้นควรหายไป และหลังหยุด Server ด้วย `Ctrl+C` คิว `cinema_requests` ควรหายไป
+
+## 11. ปัญหาที่พบบ่อย
+
+### Client เปิดไม่ได้และพบ `cinema_requests` หรือ `No such file`
+
+ยังไม่ได้เปิด Server ให้เปิด Server ในอีก terminal ก่อน แล้วจึงเปิด Client หรือ RaceTest
+
+### Server แจ้งว่า `/cinema_requests` มีอยู่แล้ว
+
+อาจมี Server อีกตัวทำงานอยู่ ตรวจสอบด้วย:
+
+```bash
+docker top cinema-mq
+docker exec cinema-mq ls -l /dev/mqueue
+```
+
+อย่าเปิด Server ซ้อนกันและอย่าลบคิวของ Server ที่ยังทำงานอยู่
+
+### พบ `Timed out waiting for response`
+
+Client ส่งคำขอแล้วแต่ไม่ได้รับคำตอบภายใน 15 วินาที ให้ตรวจว่า Server ยังทำงานและไม่มี error ใน Terminal 1
+
+### Docker แจ้งว่าชื่อ container ถูกใช้แล้ว
+
+ถ้า container เดิมหยุดอยู่:
+
+```bash
+docker start cinema-mq
+```
+
+ถ้าต้องการสร้างใหม่จาก image ล่าสุด:
+
+```bash
+docker rm -f cinema-mq
+docker run -d --name cinema-mq cinema-mq
+```
+
+## 12. ปิดระบบ
+
+1. พิมพ์ `QUIT` ใน Client ทุกตัว
+2. กด `Ctrl+C` ใน Terminal ของ Server
+3. หยุดและลบ container:
+
+```bash
+docker stop cinema-mq
+docker rm cinema-mq
+```
+
+Image ยังอยู่และนำกลับมาใช้ได้ หากต้องการลบ image ด้วย:
+
+```bash
+docker image rm cinema-mq
+```

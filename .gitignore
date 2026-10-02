@@ -10,9 +10,10 @@ target/
 logs/
 results/
 
-# Keep only the project README as Markdown documentation
+# Keep project documentation and the completed checklist
 *.md
 !README.md
+!TODO.md
 
 # IDE settings
 .vscode/

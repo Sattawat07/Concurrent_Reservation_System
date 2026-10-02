@@ -1,10 +1,6 @@
-FROM eclipse-temurin:17-jdk-alpine
+FROM maven:3.9.11-eclipse-temurin-17
 WORKDIR /app
-
-COPY Server.java Client.java RaceTest.java ./
-
-RUN javac Server.java Client.java RaceTest.java
-
-EXPOSE 8080
-
-CMD ["java", "Server"]
+COPY pom.xml ./
+COPY src ./src
+RUN mvn -q -DskipTests package dependency:copy-dependencies -DincludeScope=runtime
+CMD ["sleep", "infinity"]
