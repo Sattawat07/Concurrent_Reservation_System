@@ -307,17 +307,7 @@ Worker หลายตัวเห็น `AVAILABLE` ก่อนที่ตั
 
 ในโหมด `nosync` จะไม่มี `LOCK` และ `UNLOCK` เพราะไม่ได้ใช้ Semaphore
 
-## 10. วิธีรันแบบที่ 3: Automated Tests
-
-หยุด Server แบบ interactive ก่อน แล้วรัน:
-
-```bash
-docker exec cinema-mq mvn -q test
-```
-
-ต้องหยุด Server ก่อน เพราะชุดทดสอบจะสร้าง `/cinema_requests` และเริ่ม Server สำหรับการทดสอบเอง ถ้าคำสั่งจบโดยไม่มี error แสดงว่าชุดทดสอบผ่าน
-
-## 11. ตรวจสอบ Message Queue
+## 10. ตรวจสอบ Message Queue
 
 ระหว่างที่ Server หรือ Client ทำงาน สามารถดูคิวได้ด้วย:
 
@@ -339,7 +329,7 @@ cinema_reply_1234_a1b2c3...
 
 หลัง Client ปิดด้วย `QUIT` response queue ของ Client นั้นควรหายไป และหลังหยุด Server ด้วย `Ctrl+C` คิว `cinema_requests` ควรหายไป
 
-## 12. ปัญหาที่พบบ่อย
+## 11. ปัญหาที่พบบ่อย
 
 ### Client เปิดไม่ได้และพบ `cinema_requests` หรือ `No such file`
 
@@ -374,8 +364,7 @@ docker start cinema-mq
 docker rm -f cinema-mq
 docker run -d --name cinema-mq cinema-mq
 ```
-
-## 13. ปิดระบบ
+## 12. ปิดระบบ
 
 1. พิมพ์ `QUIT` ใน Client ทุกตัว
 2. กด `Ctrl+C` ใน Terminal ของ Server
