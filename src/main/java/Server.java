@@ -1,4 +1,5 @@
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.concurrent.Semaphore;
@@ -9,6 +10,7 @@ public final class Server {
     private static final int NUM_SEATS = 20;
     private static final int DEFAULT_WORKERS = 3;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
+    private static final ZoneId LOG_ZONE = ZoneId.of(System.getenv().getOrDefault("APP_TIMEZONE", "Asia/Bangkok"));
     private final Seat[] seats = new Seat[NUM_SEATS + 1];
     private final Semaphore mutex = new Semaphore(1);
     private final AtomicLong sequence = new AtomicLong();
@@ -29,7 +31,7 @@ public final class Server {
 
     private synchronized void log(int workerId, String event, String details) {
         System.out.printf(Locale.ROOT, "[%03d %s] W%d %s %s%n",
-                sequence.incrementAndGet(), LocalTime.now().format(TIME), workerId, event, details);
+                sequence.incrementAndGet(), LocalTime.now(LOG_ZONE).format(TIME), workerId, event, details);
     }
 
     private static String details(RequestMessage request) {
