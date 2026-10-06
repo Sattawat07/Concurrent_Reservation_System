@@ -7,6 +7,8 @@
 - Docker Desktop หรือ Docker Engine ที่กำลังทำงาน
 - เปิด terminal ที่โฟลเดอร์โปรเจกต์ซึ่งมี `Dockerfile`
 
+> Docker Desktop ต้องทำงานในโหมด Linux containers เนื่องจากโปรเจกต์ใช้ Linux POSIX Message Queue และไม่สามารถรันบน Windows แบบ Native ได้
+
 ตรวจสอบว่า Docker พร้อมใช้งาน:
 
 ```bash
@@ -58,7 +60,26 @@ docker rm -f cinema-mq
 docker run -d --name cinema-mq cinema-mq
 ```
 
-## 4. รูปแบบการเปิด Server
+## 4. รูปแบบ Message Queue ที่ใช้
+
+ระบบใช้ Linux POSIX Message Queue สำหรับสื่อสารระหว่าง Client process และ Server process ภายใน container เดียวกัน โดยไม่ใช้ IP address หรือ port
+
+ระบบใช้คิวสองประเภท:
+
+| คิว | ผู้สร้าง | ผู้ส่ง | ผู้รับ | หน้าที่ |
+| --- | --- | --- | --- | --- |
+| `/cinema_requests` | Server | Client ทุกตัว | Worker threads | รับคำขอจาก Client ทั้งหมด |
+| `/cinema_reply_<pid>_<uuid>` | Client แต่ละตัว | Worker ที่ประมวลผลคำขอ | Client เจ้าของคิว | รับผลลัพธ์เฉพาะ Client นั้น |
+
+Client ทำหน้าที่เป็น Producer โดยสร้าง `RequestMessage` แล้วส่งเข้าสู่ `/cinema_requests` ส่วน Worker threads ทำหน้าที่เป็น Consumers และรับข้อความด้วย `mq_receive()`
+
+`RequestMessage` ประกอบด้วย `requestId`, `clientId`, `command`, `resourceId` และ `responseQueue`
+
+เมื่อประมวลผลเสร็จ Worker จะสร้าง `ResponseMessage` และส่งไปยัง response queue ที่ระบุอยู่ใน Request โดย Response ประกอบด้วย `requestId`, `success` และ `text`
+
+Request Queue รองรับสูงสุด 10 ข้อความ ขนาดข้อความไม่เกิน 512 ไบต์ ส่วน Response Queue รองรับสูงสุด 10 ข้อความ ขนาดข้อความไม่เกิน 4,096 ไบต์
+
+## 5. รูปแบบการเปิด Server
 
 คำสั่ง Server มีรูปแบบดังนี้:
 
@@ -86,7 +107,7 @@ docker exec -it cinema-mq java -cp 'target/classes:target/dependency/*' Server s
 
 เปิด Server ได้ครั้งละหนึ่งตัวเท่านั้น
 
-## 5. วิธีรันแบบที่ 1: ใช้งานผ่าน Client
+## 6. วิธีรันแบบที่ 1: ใช้งานผ่าน Client
 
 ต้องเปิด Server ใน Terminal 1 ก่อน จากนั้นเปิด Terminal 2 แล้วรัน:
 
@@ -138,7 +159,7 @@ SUCCESS: Seat 10 reserved successfully.
 FAILED: Seat 10 is already reserved.
 ```
 
-## 6. วิธีรันแบบที่ 2: ทดลองพร้อมกันด้วย RaceTest
+## 7. วิธีรันแบบที่ 2: ทดลองพร้อมกันด้วย RaceTest
 
 `RaceTest` สร้าง Client ตามจำนวนที่กำหนดและปล่อยให้ส่งคำสั่ง `RESERVE` พร้อมกัน รูปแบบคำสั่งคือ:
 
@@ -202,7 +223,7 @@ docker exec cinema-mq java -cp 'target/classes:target/dependency/*' RaceTest 10 
 
 ผลที่ควรได้: ทุกรอบมี `successes=1` เพราะ Semaphore อนุญาตให้ Worker เข้า Critical Section ได้ครั้งละหนึ่งตัว
 
-## 7. วิธีอ่านผลจาก RaceTest
+## 8. วิธีอ่านผลจาก RaceTest
 
 ตัวอย่าง:
 
@@ -224,7 +245,7 @@ Attempt 1 seat 10: successes=1 failures=4 transportErrors=0
 
 ใน `sync` ค่าที่ถูกต้องสำหรับการจองที่นั่งเดียวกันคือ `successes=1` ส่วน `nosync` ที่มี `successes>1` คือหลักฐานของ Race Condition
 
-## 8. วิธีอ่าน Server Log
+## 9. วิธีอ่าน Server Log
 
 Server log ใช้รูปแบบ `[ลำดับ เวลา] W<หมายเลข> EVENT รายละเอียด` โดยลำดับเติมศูนย์อย่างน้อย 3 หลัก และเวลาแม่นยำถึงมิลลิวินาที:
 
@@ -286,7 +307,17 @@ Worker หลายตัวเห็น `AVAILABLE` ก่อนที่ตั
 
 ในโหมด `nosync` จะไม่มี `LOCK` และ `UNLOCK` เพราะไม่ได้ใช้ Semaphore
 
-## 9. ตรวจสอบ Message Queue
+## 10. วิธีรันแบบที่ 3: Automated Tests
+
+หยุด Server แบบ interactive ก่อน แล้วรัน:
+
+```bash
+docker exec cinema-mq mvn -q test
+```
+
+ต้องหยุด Server ก่อน เพราะชุดทดสอบจะสร้าง `/cinema_requests` และเริ่ม Server สำหรับการทดสอบเอง ถ้าคำสั่งจบโดยไม่มี error แสดงว่าชุดทดสอบผ่าน
+
+## 11. ตรวจสอบ Message Queue
 
 ระหว่างที่ Server หรือ Client ทำงาน สามารถดูคิวได้ด้วย:
 
@@ -308,7 +339,7 @@ cinema_reply_1234_a1b2c3...
 
 หลัง Client ปิดด้วย `QUIT` response queue ของ Client นั้นควรหายไป และหลังหยุด Server ด้วย `Ctrl+C` คิว `cinema_requests` ควรหายไป
 
-## 10. ปัญหาที่พบบ่อย
+## 12. ปัญหาที่พบบ่อย
 
 ### Client เปิดไม่ได้และพบ `cinema_requests` หรือ `No such file`
 
@@ -344,7 +375,7 @@ docker rm -f cinema-mq
 docker run -d --name cinema-mq cinema-mq
 ```
 
-## 11. ปิดระบบ
+## 13. ปิดระบบ
 
 1. พิมพ์ `QUIT` ใน Client ทุกตัว
 2. กด `Ctrl+C` ใน Terminal ของ Server
