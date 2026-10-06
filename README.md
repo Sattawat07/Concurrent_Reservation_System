@@ -63,7 +63,7 @@ docker run -d --name cinema-mq cinema-mq
 คำสั่ง Server มีรูปแบบดังนี้:
 
 ```text
-Server <mode> <workerCount>
+Server [sync|nosync] [workerCount]
 ```
 
 | รูปแบบ | ความหมาย | ใช้เมื่อ |
@@ -71,6 +71,8 @@ Server <mode> <workerCount>
 | `sync 1` | มี Worker 1 ตัวและใช้ Semaphore | ทดลองกรณีทำงานทีละคำขอ |
 | `nosync 3` | มี Worker 3 ตัวและไม่ใช้ Semaphore | สาธิต Race Condition |
 | `sync 3` | มี Worker 3 ตัวและใช้ Semaphore | สาธิตการแก้ Race Condition |
+
+หากไม่ระบุอาร์กิวเมนต์ Server จะใช้ `sync` และ Worker 3 ตัวตามค่าเริ่มต้น
 
 เปิด Server ใน Terminal 1 และปล่อย terminal นี้ไว้:
 
@@ -144,7 +146,7 @@ FAILED: Seat 10 is already reserved.
 RaceTest <seatId> <clientCount> <attempts>
 ```
 
-ตัวอย่างนี้ให้ Client 5 ตัวแข่งกันจอง เริ่มจากที่นั่ง 10 และทดลองสูงสุด 3 รอบ:
+ตัวอย่างนี้ให้ Client 5 ตัวแข่งกันจอง เริ่มจากที่นั่ง 10 และทดลองสูงสุด 3 รอบ (จะหยุดก่อนหากพบหลายคำขอจองสำเร็จในรอบเดียว):
 
 ```bash
 docker exec cinema-mq java -cp 'target/classes:target/dependency/*' RaceTest 10 5 3
@@ -284,17 +286,7 @@ Worker หลายตัวเห็น `AVAILABLE` ก่อนที่ตั
 
 ในโหมด `nosync` จะไม่มี `LOCK` และ `UNLOCK` เพราะไม่ได้ใช้ Semaphore
 
-## 9. วิธีรันแบบที่ 3: Automated Tests
-
-หยุด Server แบบ interactive ก่อน แล้วรัน:
-
-```bash
-docker exec cinema-mq mvn -q test
-```
-
-ต้องหยุด Server ก่อน เพราะชุดทดสอบจะสร้าง `/cinema_requests` และเริ่ม Server สำหรับการทดสอบเอง ถ้าคำสั่งจบโดยไม่มี error แสดงว่าชุดทดสอบผ่าน
-
-## 10. ตรวจสอบ Message Queue
+## 9. ตรวจสอบ Message Queue
 
 ระหว่างที่ Server หรือ Client ทำงาน สามารถดูคิวได้ด้วย:
 
@@ -316,7 +308,7 @@ cinema_reply_1234_a1b2c3...
 
 หลัง Client ปิดด้วย `QUIT` response queue ของ Client นั้นควรหายไป และหลังหยุด Server ด้วย `Ctrl+C` คิว `cinema_requests` ควรหายไป
 
-## 11. ปัญหาที่พบบ่อย
+## 10. ปัญหาที่พบบ่อย
 
 ### Client เปิดไม่ได้และพบ `cinema_requests` หรือ `No such file`
 
@@ -352,7 +344,7 @@ docker rm -f cinema-mq
 docker run -d --name cinema-mq cinema-mq
 ```
 
-## 12. ปิดระบบ
+## 11. ปิดระบบ
 
 1. พิมพ์ `QUIT` ใน Client ทุกตัว
 2. กด `Ctrl+C` ใน Terminal ของ Server
