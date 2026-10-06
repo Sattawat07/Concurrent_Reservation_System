@@ -84,7 +84,7 @@ Request Queue รองรับสูงสุด 10 ข้อความ ข�
 คำสั่ง Server มีรูปแบบดังนี้:
 
 ```text
-Server <mode> <workerCount>
+Server [sync|nosync] [workerCount]
 ```
 
 | รูปแบบ | ความหมาย | ใช้เมื่อ |
@@ -93,9 +93,7 @@ Server <mode> <workerCount>
 | `nosync 3` | มี Worker 3 ตัวและไม่ใช้ Semaphore | สาธิต Race Condition |
 | `sync 3` | มี Worker 3 ตัวและใช้ Semaphore | สาธิตการแก้ Race Condition |
 
-- ใช้ `sync` เมื่อต้องการ **เปิด Synchronization** ด้วย `Semaphore(1)`
-- ใช้ `nosync` เมื่อต้องการ **ปิด Synchronization** เพื่อสาธิต Race Condition
-- การเปลี่ยนโหมดต้องหยุด Server เดิมด้วย `Ctrl+C` แล้วเริ่ม Server ใหม่
+หากไม่ระบุอาร์กิวเมนต์ Server จะใช้ `sync` และ Worker 3 ตัวตามค่าเริ่มต้น
 
 เปิด Server ใน Terminal 1 และปล่อย terminal นี้ไว้:
 
@@ -169,7 +167,7 @@ FAILED: Seat 10 is already reserved.
 RaceTest <seatId> <clientCount> <attempts>
 ```
 
-ตัวอย่างนี้ให้ Client 5 ตัวแข่งกันจอง เริ่มจากที่นั่ง 10 และทดลองสูงสุด 3 รอบ:
+ตัวอย่างนี้ให้ Client 5 ตัวแข่งกันจอง เริ่มจากที่นั่ง 10 และทดลองสูงสุด 3 รอบ (จะหยุดก่อนหากพบหลายคำขอจองสำเร็จในรอบเดียว):
 
 ```bash
 docker exec cinema-mq java -cp 'target/classes:target/dependency/*' RaceTest 10 5 3
